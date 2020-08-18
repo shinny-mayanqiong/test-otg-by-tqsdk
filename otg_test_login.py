@@ -15,10 +15,12 @@ if __name__ == '__main__':
     logger.addHandler(sh)
 
     # bid, user_id, pwd = ("simnow", "103988", "MaYanQiong")
-    bid, user_id, pwd = ("五矿经易_ETF", "000199", "Aa9168")
+    bid, user_id, pwd = ("N南华期货_ETF", "90092307", "666666")  # wss://t-ios.shinnytech.com:37443/trade
+    # bid, user_id, pwd = ("五矿经易_ETF", "000199", "Aa9168")
 
     logger.info(f"{'*' * 20} {bid} {user_id} {pwd} {'*' * 20}")
-    api = TqApi(TqAccount(bid, user_id, pwd), auth="myanq@qq.com,MaYanQiong", _td_url="wss://test-t.shinnytech.com:37443/trade")
+    # api = TqApi(TqAccount(bid, user_id, pwd), auth="myanq@qq.com,MaYanQiong")
+    api = TqApi(TqAccount(bid, user_id, pwd), auth="myanq@qq.com,MaYanQiong", _td_url="wss://t-ios.shinnytech.com:37443/trade")
     # api = TqApi(TqAccount(bid, user_id, pwd), auth="myanq@qq.com,MaYanQiong", _td_url="ws://test_t.shinnytech.com:80/trade")
 
     is_ctp = False if bid == "快期模拟" else True
@@ -35,6 +37,6 @@ if __name__ == '__main__':
     check_orders(orders, api, is_ctp)
     check_positions(positions, api, is_ctp)
     check_account(account, positions, is_ctp)
-    check_risk_rule(api)
-    check_risk_data(api)
+    # check_risk_rule(api)
+    # check_risk_data(api)
     api.close()

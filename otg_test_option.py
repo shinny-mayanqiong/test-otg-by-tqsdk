@@ -83,21 +83,8 @@ if __name__ == '__main__':
     logger = logging.getLogger("OTGTest")
     logger.addHandler(sh)
 
-    # bid, user_id, pwd = ("simnow", "103988", "MaYanQiong")
-    bid, user_id, pwd = ("五矿经易_ETF", "000199", "Aa9168")
+    bid, user_id, pwd = ("simnow", "103988", "MaYanQiong")
+    # bid, user_id, pwd = ("五矿经易_ETF", "000199", "Aa9168")
 
     logger.info(f"{'*' * 20} {bid} {user_id} {pwd} {'*' * 20}")
     run_tianqin_code(bid, user_id, pwd, "wss://test-t.shinnytech.com:443/trade")
-
-
-"""
-2020-08-12 14:45:53,509 -  DEBUG - websocket message sent to ws://test_t.shinnytech.com:37480/trade: {"aid": "insert_order", "user_id": "000199", "order_id": "PYSDK_insert_5be75dedb6555919cc4dfc1119d4225a", "exchange_id": "SSE", "instrument_id": "10002513", "direction": "BUY", "offset": "OPEN", "volume": 3, "price_type": "BEST", "time_condition": "IOC", "volume_condition": "ALL"}
-2020-08-12 14:45:53,622 -  DEBUG - websocket message received from ws://test_t.shinnytech.com:37480/trade: {"aid":"rtn_data","data":[{"trade":{"000199":{"user_id":"000199","trading_day":"","trade_more_data":false,"accounts":{},"positions":{},"orders":{"PYSDK_insert_5be75dedb6555919cc4dfc1119d4225a":{"seqno":16,"user_id":"000199","order_id":"PYSDK_insert_5be75dedb6555919cc4dfc1119d4225a","exchange_id":"SSE","instrument_id":"10002513","direction":"BUY","offset":"OPEN","volume_orign":3,"price_type":"BEST","limit_price":0.0,"time_condition":"IOC","volume_condition":"ALL","insert_date_time":1597214110000000000,"exchange_order_id":"","status":"FINISHED","volume_left":3,"last_msg":"已撤单报单被拒绝12038","frozen_margin":0.0,"frozen_premium":0.0,"frozen_commm
-ission":0.0}},"trades":{},"banks":{},"transfers":{},"pre_insert_orders":{},"risk_management_rule":{},"risk_management_data":{}}}}]}
-
-
-2020-08-12 14:46:34,727 -  DEBUG - websocket message sent to ws://test_t.shinnytech.com:37480/trade: {"aid": "insert_order", "user_id": "000199", "order_id": "PYSDK_insert_988ec85dc4389fb8987a469c2fc4d727", "exchange_id": "SSE", "instrument_id": "10002513", "direction": "BUY", "offset": "OPEN", "volume": 3, "price_type": "BEST", "time_condition": "IOC", "volume_condition": "ALL"}
-2020-08-12 14:46:35,069 -  DEBUG - websocket message received from ws://test_t.shinnytech.com:37480/trade: {"aid":"rtn_data","data":[{"trade":{"000199":{"user_id":"000199","trading_day":"","trade_more_data":false,"accounts":{},"positions":{},"orders":{"PYSDK_insert_988ec85dc4389fb8987a469c2fc4d727":{"seqno":18,"user_id":"000199","order_id":"PYSDK_insert_988ec85dc4389fb8987a469c2fc4d727","exchange_id":"SSE","instrument_id":"10002513","direction":"BUY","offset":"OPEN","volume_orign":3,"price_type":"BEST","limit_price":0.0,"time_condition":"IOC","volume_condition":"ALL","insert_date_time":1597214151000000000,"exchange_order_id":"1025059","status":"FINISHED","volume_left":0,"last_msg":"全部成交报单已提交","frozen_margin":0.0,"frozen_premium":0.0,"frozen__
-commission":0.0}},"trades":{},"banks":{},"transfers":{},"pre_insert_orders":{},"risk_management_rule":{},"risk_management_data":{}}}}]}
-
-"""

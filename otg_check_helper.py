@@ -106,7 +106,7 @@ def check_positions(positions, api, is_ctp):
         if pos.pos_long == 0 and pos.pos_short == 0:
             continue
         quote = api.get_quote(f"{pos.exchange_id}.{pos.instrument_id}")
-        logger.info(f"{'-' * 10} {pos.exchange_id}.{pos.instrument_id} 最新价:{pos.last_price} {'-' * 10}")
+        logger.info(f"{'-' * 20} {pos.exchange_id:>5}.{pos.instrument_id:6} 最新价:{pos.last_price} {'-' * 20}")
         if quote.ins_class == "FUTURE":
             show_future_position(pos, quote, is_ctp)
         else:
@@ -131,8 +131,8 @@ def check_all(api, bid, user_id):
             check_orders(orders, api, is_ctp)
             check_positions(positions, api, is_ctp)
             check_account(account, positions, is_ctp)
-            check_risk_rule(api)
-            check_risk_data(api)
+            # check_risk_rule(api)
+            # check_risk_data(api)
             break
 
 
