@@ -91,15 +91,11 @@ def record_ticks(symbols, _stock, _md_url):
 
 
 if __name__ == '__main__':
-    # rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/latest.json", timeout=30)
-    # symbols = [k for k,v in rsp.json().items() if v["exchange_id"] in EXCHANGE_LIST]  # 全部合约
-    # symbols = [k for k,v in rsp.json().items() if v["class"] != "FUTURE_COMBINE"]  # 非组合数据
-    # combine_symbols = [k for k,v in rsp.json().items() if v["class"] == "FUTURE_COMBINE"]  # 组合数据
-    old_symbols = SYMBOLS_LIST[SYMBOLS_LIST.index("CZCE.MA009P1825"):]
-    new_symbols = SYMBOLS_LIST[SYMBOLS_LIST.index("CZCE.RM005C2850"):]
-    # "CZCE.MA009P1825"  #old
-    # "CZCE.RM005C2850"  #new
-    old_md = mp.Process(target=record_ticks, args=(old_symbols, False, "wss://u.shinnytech.com/t/md/front/mobile"))
+    rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/latest.json", timeout=30)
+    symbols = [k for k,v in rsp.json().items() if v["exchange_id"] in EXCHANGE_LIST and v["expired"] is False]  # 未下市全部合约
+    new_symbols = SYMBOLS_LIST[SYMBOLS_LIST.index("DCE.jm1609"):]
+
+    old_md = mp.Process(target=record_ticks, args=(new_symbols, False, "wss://u.shinnytech.com/t/md/front/mobile"))
     new_md = mp.Process(target=record_ticks, args=(new_symbols, True, "wss://api.shinnytech.com/t/nfmd/front/mobile"))
     old_md.start()
     new_md.start()
