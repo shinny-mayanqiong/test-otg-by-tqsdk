@@ -20,7 +20,7 @@ from tqsdk import TqApi
 from tqsdk.diff import _get_obj
 from tqsdk.utils import _generate_uuid
 
-from md.md_test_quotes_list import SYMBOLS_LIST
+import multiprocessing
 
 AUTH = "myanq@qq.com,MaYanQiong"
 EXCHANGE_LIST = ["SHFE", "CFFEX", "INE", "DCE", "CZCE", "KQ", "SSWE"]
@@ -78,26 +78,23 @@ def _nano_to_str(nano):
     return s
 
 
-def record_ticks(symbols, _stock, _md_url):
+def record_ticks(args):
+    symbol, _stock, _md_url = args
     api = TqApi(auth=AUTH, _stock=_stock, _md_url=_md_url)
-    for i in range(len(symbols)):
-        s = symbols[i]
-        os.makedirs(f"klines/{s}", exist_ok=True)
-        for dur in [0, 1, 5, 15, 30, 60, 60*5, 60*15, 60*30, 60*60, 60*60*2, 60*60*4, 60*60*24, 60*60*24*7]:
-            file_name = f"klines/{s}/{'ticks' if dur == 0 else 'klines_' + str(dur)}_{'new' if _stock else 'old'}.csv"
-            download_symbol_dur(s, dur, api, file_name)
-        print(f"{'new' if _stock else 'old'} 完成 {s} 进度 {i / len(symbols):6.2}%")
+    os.makedirs(f"klines/{symbol}", exist_ok=True)
+    for dur in [0, 1, 5, 15, 30, 60, 60 * 5, 60 * 15, 60 * 30, 60 * 60, 60 * 60 * 2, 60 * 60 * 4, 60 * 60 * 24, 60 * 60 * 24 * 7]:
+        file_name = f"klines/{symbol}/{'ticks' if dur == 0 else 'klines_' + str(dur)}_{'new' if _stock else 'old'}.csv"
+        download_symbol_dur(symbol, dur, api, file_name)
     api.close()
+    print(symbol, 'new' if _stock else 'old')
 
 
 if __name__ == '__main__':
     rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/latest.json", timeout=30)
-    symbols = [k for k,v in rsp.json().items() if v["exchange_id"] in EXCHANGE_LIST and v["expired"] is False]  # 未下市全部合约
-    new_symbols = SYMBOLS_LIST[SYMBOLS_LIST.index("DCE.jm1609"):]
-
-    old_md = mp.Process(target=record_ticks, args=(new_symbols, False, "wss://u.shinnytech.com/t/md/front/mobile"))
-    new_md = mp.Process(target=record_ticks, args=(new_symbols, True, "wss://api.shinnytech.com/t/nfmd/front/mobile"))
-    old_md.start()
-    new_md.start()
-    old_md.join()
-    new_md.join()
+    symbols = [k for k,v in rsp.json().items() if v["exchange_id"] in EXCHANGE_LIST and v["expired"] is True]  # 未下市全部合约
+    inputs = [(s, True, "wss://api.shinnytech.com/t/nfmd/front/mobile") for s in symbols] + [(s, False, "wss://u.shinnytech.com/t/md/front/mobile") for s in symbols]
+    # 每个进程只下一个合约
+    pool = multiprocessing.Pool(processes=4)
+    pool_outputs = pool.map(record_ticks, inputs)
+    pool.close()
+    pool.join()
