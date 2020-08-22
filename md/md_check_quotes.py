@@ -1,11 +1,21 @@
+#!/usr/bin/env python
+#  -*- coding: utf-8 -*-
+"""
+新旧行情服务器 合约信息是否一致 所有未到期的 SHFE,CFFEX,INE,DCE,CZCE,SSWE 的所有合约的所有共有信息
+old : "wss://u.shinnytech.com/t/md/front/mobile"
+new : "wss://api.shinnytech.com/t/nfmd/front/mobile"
 
+在非交易时段针对每个合约(包括到期合约)，获取新老行情系统的 quote
+
+检查两个版本服务器的主连和主力合约，行情信息的各个字段是否一样
+"""
 
 import csv
 
-import requests
 
 
 if __name__ == "__main__":
+    # import requests
     # rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/latest.json", timeout=30)
     # symbols = [v["underlying_symbol"] for v in rsp.json().values() if v["class"] == "FUTURE_CONT"]
     # symbols.extend([k for k, v in rsp.json().items() if v["class"] == "FUTURE_CONT"])
@@ -28,7 +38,7 @@ if __name__ == "__main__":
      'KQ.m@CZCE.RS', 'KQ.m@CZCE.RM', 'KQ.m@CZCE.ZC', 'KQ.m@CZCE.JR', 'KQ.m@CZCE.LR', 'KQ.m@CZCE.SF', 'KQ.m@CZCE.SM',
      'KQ.m@CZCE.AP', 'KQ.m@CFFEX.TS', 'KQ.m@SHFE.sp', 'KQ.m@DCE.eg', 'KQ.m@CZCE.CJ', 'KQ.m@INE.nr', 'KQ.m@DCE.rr',
      'KQ.m@CZCE.UR', 'KQ.m@SHFE.ss', 'KQ.m@DCE.eb', 'KQ.m@CZCE.SA', 'KQ.m@DCE.pg', 'KQ.m@INE.lu']
-    symbols = [s for s in symbols if s.startswith("KQ.m@")]
+    symbols = [s for s in symbols if not s.startswith("KQ.m@")]
     delta_list = []
     for s in symbols:
         print(f"start {s} {'='*20}")
@@ -78,11 +88,11 @@ if __name__ == "__main__":
                 quotes_count += 1
                 # local_nano_time, quote_nano_time, datetime, last_price, highest, lowest, open, close, average, volume, amount, open_interest, ask_price1, ask_volume1, bid_price1, bid_volume1, ask_price2, ask_volume2, bid_price2, bid_volume2, ask_price3, ask_volume3, bid_price3, bid_volume3, ask_price4, ask_volume4, bid_price4, bid_volume4, ask_price5, ask_volume5, bid_price5, bid_volume5
                 delta_t = (int(old_quote['local_nano_time']) - int(new_quote['local_nano_time'])) / 1e6
-                delta_list.append(abs(delta_t))
+                delta_list.append(delta_t)
                 if delta_t == 0:
                     print(f" {s} {old_quote['datetime']} delta_t == 0")
                 if abs(delta_t) > 300:
-                    print(f" {s} {old_quote['datetime']} delta_t > 300")
+                    print(f" {s} {old_quote['datetime']} {delta_t} delta_t > 300 or delta_t < -300")
                 for k in old_quote:
                     if k == 'local_nano_time':
                         continue
@@ -97,13 +107,13 @@ if __name__ == "__main__":
 
     import numpy as np
     arr = np.array(delta_list)
-    print(f"均值 - {np.mean(arr):.4} \n"
-          f"中位数 - {np.median(arr):.4} \n"
-          f"1/4 - {np.percentile(arr, 25):.4} \n"
-          f"3/4 - {np.percentile(arr, 75):.4} \n"
-          f"9/10 - {np.percentile(arr, 90):.4} \n"
-          f"95/100 - {np.percentile(arr, 95):.4} \n"
-          f"99/100 - {np.percentile(arr, 99):.4} \n"
-          f"最小值 {arr.min():.4} \n"
-          f"最大值 {arr.max():.4} \n"
-          f"差值大于300占比 {sum(arr > 300)}/{arr.size} = {sum(arr > 300) / arr.size * 100 :.4}%")
+    print(f"均值 -> {np.mean(arr):.4} \n"
+          f"1/4 -> {np.percentile(arr, 25):.4} \n"
+          f"中位数 -> {np.median(arr):.4} \n"
+          f"3/4 -> {np.percentile(arr, 75):.4} \n"
+          f"9/10 -> {np.percentile(arr, 90):.4} \n"
+          f"95/100 -> {np.percentile(arr, 95):.4} \n"
+          f"99/100 -> {np.percentile(arr, 99):.4} \n"
+          f"最小值 -> {arr.min():.4} \n"
+          f"最大值 -> {arr.max():.4} \n"
+          f"差值大于+-300占比 -> {sum(arr > 300) + sum(arr < -300)}/{arr.size} = {(sum(arr > 300)  + sum(arr < -300)) / arr.size * 100 :.4}%")
