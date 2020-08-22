@@ -14,6 +14,7 @@ import os
 import csv
 import multiprocessing as mp
 from datetime import datetime
+from time import time
 
 import requests
 from tqsdk import TqApi
@@ -31,6 +32,11 @@ KLINES_COLS = ["open", "high", "low", "close", "volume", "open_oi", "close_oi"]
 TICKS_COLS = ["last_price", "highest", "lowest", "bid_price1", "bid_volume1", "ask_price1", "ask_volume1", "volume",
          "amount", "open_interest"]
 
+timeout_file_name = f"S:/mayanqiong/timeouts/timeout.csv"
+timeout_file = open(timeout_file_name, 'w', newline='')
+timeout_writer = csv.writer(timeout_file, dialect='excel')
+timeout_writer.writerow(["symbol", "duration", "file_name"])
+
 def download_symbol_dur(s, dur, api, file_name):
     csv_file = open(file_name, 'w', newline='')
     csv_writer = csv.writer(csv_file, dialect='excel')
@@ -47,19 +53,25 @@ def download_symbol_dur(s, dur, api, file_name):
     chart = _get_obj(api._data, ["charts", chart_info["chart_id"]])
     path = ["klines", s, str(int(dur*1e9))] if dur > 0 else ["ticks", s]
     serial = _get_obj(api._data, path)
+    end_time = time() + 30
     while True:
-        api.wait_update()
+        api.wait_update(time() + 30)
         left_id = chart.get("left_id", -1)
         right_id = chart.get("right_id", -1)
         last_id = serial.get("last_id", -1)
         if (right_id > -1 and last_id > -1) and api._data.get("mdhis_more_data", True) is False:
+            for current_id in range(max(left_id, 0), right_id + 1):
+                item = serial["data"].get(str(current_id), {})
+                row = [str(current_id), item["datetime"], _nano_to_str(item["datetime"])]
+                for col in data_cols:
+                    row.append(item.get(col, "#N/A"))
+                csv_writer.writerow(row)
             break
-    for current_id in range(max(left_id, 0), right_id+1):
-        item = serial["data"].get(str(current_id), {})
-        row = [str(current_id), item["datetime"], _nano_to_str(item["datetime"])]
-        for col in data_cols:
-            row.append(item.get(col, "#N/A"))
-        csv_writer.writerow(row)
+        if time() > end_time:
+            print(f"request timeout {s} {dur} {file_name}")
+            timeout_writer.writerow([s, dur, file_name])
+            break
+    csv_file.close()
     api._send_chan.send_nowait({
         "aid": "set_chart",
         "chart_id": chart_info["chart_id"],
@@ -67,8 +79,6 @@ def download_symbol_dur(s, dur, api, file_name):
         "duration": int(dur*1e9),
         "view_width": DATA_LENGTH,
     })
-    # api.wait_update()
-    csv_file.close()
 
 
 def _nano_to_str(nano):
@@ -87,7 +97,8 @@ def record_ticks(args):
             file_name = f"S:/mayanqiong/klines_expired/{symbol}/{'ticks' if dur == 0 else 'klines_' + str(dur)}_{'new' if _stock else 'old'}.csv"
             download_symbol_dur(symbol, dur, api, file_name)
     api.close()
-    print(symbols, 'new' if _stock else 'old')
+    print(args)
+
 
 def get_dir_size(dir):
     size = 0
@@ -109,6 +120,11 @@ def clear_dirs():
             if 0 < len(file_list[t]) < 14:
                 for f in file_list[t]:
                     os.remove(f"S:/mayanqiong/klines_expired/{d}/{f}")
+            else:
+                for f in file_list[t]:
+                    if os.path.getsize(f"S:/mayanqiong/klines_expired/{d}/{f}") < 128:
+                        os.remove(f"S:/mayanqiong/klines_expired/{d}/{f}")
+
 
 def has_downloaded(symbol, _stock):
     if not os.path.exists(f"S:/mayanqiong/klines_expired/{symbol}"):
@@ -119,10 +135,11 @@ def has_downloaded(symbol, _stock):
     else:
         return False
 
+
 if __name__ == '__main__':
     # clear_dirs()
     rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/latest.json", timeout=30)
-    symbols = [k for k,v in rsp.json().items() if v["exchange_id"] in EXCHANGE_LIST]
+    symbols = [k for k,v in rsp.json().items() if v["exchange_id"] in EXCHANGE_LIST if v["class"] != "FUTURE_COMBINE"]
     inputs = []
     symbols_group = {'new': [], 'old': []}
     symbols_group_size = 5
@@ -141,10 +158,9 @@ if __name__ == '__main__':
         inputs.append((symbols_group['old'], False, "wss://u.shinnytech.com/t/md/front/mobile"))
     if symbols_group['new']:
         inputs.append((symbols_group['new'], True, "wss://api.shinnytech.com/t/nfmd/front/mobile"))
-    # [print(i) for i in inputs]
     print(len(inputs))
-    # 每个进程只下一个合约
     pool = multiprocessing.Pool(processes=32)
     pool_outputs = pool.map(record_ticks, inputs)
     pool.close()
     pool.join()
+    timeout_file.close()
