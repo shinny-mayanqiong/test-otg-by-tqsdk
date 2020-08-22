@@ -67,7 +67,7 @@ def download_symbol_dur(s, dur, api, file_name):
         "duration": int(dur*1e9),
         "view_width": DATA_LENGTH,
     })
-    api.wait_update()
+    # api.wait_update()
     csv_file.close()
 
 
@@ -79,22 +79,72 @@ def _nano_to_str(nano):
 
 
 def record_ticks(args):
-    symbol, _stock, _md_url = args
+    symbols, _stock, _md_url = args
     api = TqApi(auth=AUTH, _stock=_stock, _md_url=_md_url)
-    os.makedirs(f"klines/{symbol}", exist_ok=True)
-    for dur in [0, 1, 5, 15, 30, 60, 60 * 5, 60 * 15, 60 * 30, 60 * 60, 60 * 60 * 2, 60 * 60 * 4, 60 * 60 * 24, 60 * 60 * 24 * 7]:
-        file_name = f"klines/{symbol}/{'ticks' if dur == 0 else 'klines_' + str(dur)}_{'new' if _stock else 'old'}.csv"
-        download_symbol_dur(symbol, dur, api, file_name)
+    for symbol in symbols:
+        os.makedirs(f"S:/mayanqiong/klines_expired/{symbol}", exist_ok=True)
+        for dur in [0, 1, 5, 15, 30, 60, 60 * 5, 60 * 15, 60 * 30, 60 * 60, 60 * 60 * 2, 60 * 60 * 4, 60 * 60 * 24, 60 * 60 * 24 * 7]:
+            file_name = f"S:/mayanqiong/klines_expired/{symbol}/{'ticks' if dur == 0 else 'klines_' + str(dur)}_{'new' if _stock else 'old'}.csv"
+            download_symbol_dur(symbol, dur, api, file_name)
     api.close()
-    print(symbol, 'new' if _stock else 'old')
+    print(symbols, 'new' if _stock else 'old')
 
+def get_dir_size(dir):
+    size = 0
+    for root, dirs, files in os.walk(dir):
+        size += sum([os.path.getsize(os.path.join(root, name)) for name in files])
+    return size
+
+
+def clear_dirs():
+    "删除文件数小于 14 的 new 、old 文件 "
+    dir_list = os.listdir(f"S:/mayanqiong/klines_expired/")
+    for d in dir_list:
+        dir_file_list = os.listdir(f"S:/mayanqiong/klines_expired/{d}")
+        file_list = {
+            "old": [f for f in dir_file_list if f.find("old") > -1],
+            "new": [f for f in dir_file_list if f.find("new") > -1]
+        }
+        for t in ["new", "old"]:
+            if 0 < len(file_list[t]) < 14:
+                for f in file_list[t]:
+                    os.remove(f"S:/mayanqiong/klines_expired/{d}/{f}")
+
+def has_downloaded(symbol, _stock):
+    if not os.path.exists(f"S:/mayanqiong/klines_expired/{symbol}"):
+        return False
+    dir_file_list = os.listdir(f"S:/mayanqiong/klines_expired/{symbol}")
+    if len([f for f in dir_file_list if f.find("new" if _stock else "old") > -1]) == 14:
+        return True
+    else:
+        return False
 
 if __name__ == '__main__':
+    # clear_dirs()
     rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/latest.json", timeout=30)
-    symbols = [k for k,v in rsp.json().items() if v["exchange_id"] in EXCHANGE_LIST and v["expired"] is True]  # 未下市全部合约
-    inputs = [(s, True, "wss://api.shinnytech.com/t/nfmd/front/mobile") for s in symbols] + [(s, False, "wss://u.shinnytech.com/t/md/front/mobile") for s in symbols]
+    symbols = [k for k,v in rsp.json().items() if v["exchange_id"] in EXCHANGE_LIST]
+    inputs = []
+    symbols_group = {'new': [], 'old': []}
+    symbols_group_size = 5
+    for s in symbols:
+        if not has_downloaded(s, False):
+            symbols_group['old'].append(s)
+        if not has_downloaded(s, True):
+            symbols_group['new'].append(s)
+        if len(symbols_group['old']) >= symbols_group_size:
+            inputs.append((symbols_group['old'], False, "wss://u.shinnytech.com/t/md/front/mobile"))
+            symbols_group['old'] = []
+        if len(symbols_group['new']) >= symbols_group_size:
+            inputs.append((symbols_group['new'], True, "wss://api.shinnytech.com/t/nfmd/front/mobile"))
+            symbols_group['new'] = []
+    if symbols_group['old']:
+        inputs.append((symbols_group['old'], False, "wss://u.shinnytech.com/t/md/front/mobile"))
+    if symbols_group['new']:
+        inputs.append((symbols_group['new'], True, "wss://api.shinnytech.com/t/nfmd/front/mobile"))
+    # [print(i) for i in inputs]
+    print(len(inputs))
     # 每个进程只下一个合约
-    pool = multiprocessing.Pool(processes=4)
+    pool = multiprocessing.Pool(processes=32)
     pool_outputs = pool.map(record_ticks, inputs)
     pool.close()
     pool.join()
