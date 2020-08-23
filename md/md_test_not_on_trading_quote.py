@@ -9,8 +9,9 @@ new : "wss://api.shinnytech.com/t/nfmd/front/mobile"
 """
 
 import csv
-import multiprocessing as mp
+import multiprocessing
 import os
+from datetime import datetime
 
 import requests
 from tqsdk import TqApi
@@ -34,10 +35,11 @@ for i in range(5):
         QUOTE_KEYS.append(t + str(i+1))
 
 
-def record_quotes(symbols, _stock, _md_url):
+def record_quotes(args):
+    symbols, file_name, _stock, _md_url = args
     api = TqApi(auth=AUTH, _stock=_stock, _md_url=_md_url)
     os.makedirs(f"quotes_not_on_trading_time", exist_ok=True)
-    csv_file = open(f"quotes_not_on_trading_time/quotes_{'new' if _stock else 'old'}1.csv", 'w', newline='')
+    csv_file = open(f"quotes_not_on_trading_time/{file_name}.csv", 'w', newline='')
     csv_writer = csv.writer(csv_file, dialect='excel')
     csv_writer.writerow(["symbol"] + QUOTE_KEYS)
     for symbol in symbols:
@@ -58,14 +60,15 @@ def record_quotes(symbols, _stock, _md_url):
     api.close()
 
 if __name__ == '__main__':
-    # rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/latest.json", timeout=30)
-    # symbols = [k for k,v in rsp.json().items() if v["exchange_id"] in EXCHANGE_LIST]  # 全部合约
-    symbols = SYMBOLS_LIST[SYMBOLS_LIST.index("CZCE.RM005C2850"):]
-    # old_symbols = SYMBOLS_LIST[SYMBOLS_LIST.index("CZCE.RM005C2850"):]
-    # new_symbols = SYMBOLS_LIST[SYMBOLS_LIST.index("CZCE.RM005C2850"):]
-    old_md = mp.Process(target=record_quotes, args=(symbols, False, "wss://u.shinnytech.com/t/md/front/mobile"))
-    new_md = mp.Process(target=record_quotes, args=(symbols, True, "wss://api.shinnytech.com/t/nfmd/front/mobile"))
-    old_md.start()
-    new_md.start()
-    old_md.join()
-    new_md.join()
+    rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/latest.json", timeout=30)
+    symbols = [k for k,v in rsp.json().items() if v["exchange_id"] in EXCHANGE_LIST]  # 全部合约
+    symbols_group = {ex: [k for k, v in symbols.keys() if v["exchange_id"] == ex] for ex in EXCHANGE_LIST}  # 按交易所分组合约
+    inputs = []
+    dt = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    for ex, symbols in symbols_group.items():
+        inputs.append((symbols, f"quotes_{dt}_{ex}_old.csv", False, "wss://u.shinnytech.com/t/md/front/mobile"))
+        inputs.append((symbols, f"quotes_{dt}_{ex}_new.csv", True, "wss://api.shinnytech.com/t/nfmd/front/mobile"))
+    pool = multiprocessing.Pool(processes=32)
+    pool_outputs = pool.map(record_quotes, inputs)
+    pool.close()
+    pool.join()
