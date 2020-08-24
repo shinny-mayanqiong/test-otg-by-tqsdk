@@ -53,9 +53,9 @@ def download_symbol_dur(s, dur, api, file_name):
     chart = _get_obj(api._data, ["charts", chart_info["chart_id"]])
     path = ["klines", s, str(int(dur*1e9))] if dur > 0 else ["ticks", s]
     serial = _get_obj(api._data, path)
-    end_time = time() + 30
+    end_time = time() + 10
     while True:
-        api.wait_update(time() + 30)
+        api.wait_update(end_time)
         left_id = chart.get("left_id", -1)
         right_id = chart.get("right_id", -1)
         last_id = serial.get("last_id", -1)
@@ -67,7 +67,7 @@ def download_symbol_dur(s, dur, api, file_name):
                     row.append(item.get(col, "#N/A"))
                 csv_writer.writerow(row)
             break
-        if time() > end_time:
+        elif time() > end_time:
             print(f"request timeout {s} {dur} {file_name}")
             timeout_writer.writerow([s, dur, file_name])
             break
