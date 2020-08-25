@@ -32,13 +32,13 @@ def get_df_diff(df_old, df_new, cols):
         arr_new = df_new[col].values
         if arr_new.dtype == "float64":
             np.round(arr_new, 3, arr_new)
-        np.logical_and(arr_diff, np.equal(arr_old, arr_new), arr_diff)
+        arr_diff = arr_diff & ((arr_old == arr_new) | (np.isnan(arr_old) & np.isnan(arr_new)))
     if not np.all(arr_diff):
         np.logical_not(arr_diff, arr_diff)
         df_diff_old = df_old.loc[arr_diff]
         df_diff_new = df_new.loc[arr_diff]
         if not df_diff_old.empty:
-            return f"{df_tostring(df_diff_old)}\n\n{df_tostring(df_diff_new)}"
+            return f"{np.count(arr_diff)} lines different\n\n{df_tostring(df_diff_old)}\n\n{df_tostring(df_diff_new)}"
     return None
 
 
@@ -49,7 +49,7 @@ def df_tostring(df, show_all=True):
     if show_all:
         return df.to_string(index=False)
     else:
-        return df[:5].to_string(index=False) + "\n.\n.\n.\n.\n.\n.\n" + df[-5:].to_string(index=False)
+        return df[:5].to_string(index=False) + "\n........\n" + df[-5:].to_string(index=False)
 
 
 def diff_two_csv(file_old, file_new, cols):
