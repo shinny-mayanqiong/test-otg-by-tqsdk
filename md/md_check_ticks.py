@@ -21,7 +21,8 @@ TICKS_COLS = ["last_price", "highest", "lowest", "bid_price1", "bid_volume1", "a
          "amount", "open_interest"]
 
 
-ROOT_DIR = "/Volumes/share/mayanqiong/"
+# ROOT_DIR = "/Volumes/share/mayanqiong/"
+ROOT_DIR = "S:/mayanqiong"
 
 
 def get_df_diff(df_old, df_new, cols):
@@ -48,7 +49,7 @@ def df_tostring(df, show_all=True):
     if show_all:
         return df.to_string(index=False)
     else:
-        return df[:5].to_string(index=False) + "\n......\n" + df[-5:].to_string(index=False)
+        return df[:5].to_string(index=False) + "\n.\n.\n.\n.\n.\n.\n" + df[-5:].to_string(index=False)
 
 
 def diff_two_csv(file_old, file_new, cols):
@@ -59,8 +60,15 @@ def diff_two_csv(file_old, file_new, cols):
     err_id 两边id值不同
     err_value 两边数值不同
     """
-    df_old = pandas.read_csv(file_old)
-    df_new = pandas.read_csv(file_new)
+    try:
+        df_old = pandas.read_csv(file_old)
+        df_new = pandas.read_csv(file_new)
+    except Exception as e:
+        print("===================")
+        print(file_old)
+        print(file_new)
+        print(e)
+        return None
     result = None
     if df_old.shape[0] == 0 and df_new.shape[0] == 0:
         result = {
@@ -117,6 +125,7 @@ def diff_symbol(dir, symbol, same_files, writing_same_queue):
 
 def record_diff(result_dir, symbol, result):
     for dur in result:
+        os.makedirs(os.path.join(result_dir, ex, result[dur]['type']), exist_ok=True)
         file = open(os.path.join(result_dir, f"{result[dur]['type']}/{symbol}-{dur}.log"), mode="w")
         file.write(result[dur]["error"])
         file.close()
@@ -130,14 +139,8 @@ def diff_symbols(dir, result_dir, symbols, same_files, writing_same_queue):
 
 def process_input(args):
     ex, symbols, result_dir, same_files, writing_same_queue = args
-    dir = os.path.join(ROOT_DIR, "klines_expired")
-    os.makedirs(os.path.join(result_dir, ex, "timeout_all"), exist_ok=True)
-    os.makedirs(os.path.join(result_dir, ex, "timeout_new"), exist_ok=True)
-    os.makedirs(os.path.join(result_dir, ex, "timeout_old"), exist_ok=True)
-    os.makedirs(os.path.join(result_dir, ex, "err_size"), exist_ok=True)
-    os.makedirs(os.path.join(result_dir, ex, "err_id"), exist_ok=True)
-    os.makedirs(os.path.join(result_dir, ex, "err_value"), exist_ok=True)
-    diff_symbols(dir, os.path.join(result_dir, ex), symbols, same_files, writing_same_queue)
+    data_dir = os.path.join(ROOT_DIR, "klines_expired")
+    diff_symbols(data_dir, os.path.join(result_dir, ex), symbols, same_files, writing_same_queue)
 
 
 def writing_proc(writing_queue, file_name):
@@ -159,8 +162,7 @@ if __name__ == "__main__":
     # symbols_group = {"SHFE": ["SHFE.au2012", "SHFE.au1612"], "CFFEX": ["CFFEX.IC1606"]}
 
     # 已经完全相等的文件
-    data_dir = os.path.join(ROOT_DIR, "klines_expired")
-    result_dir = os.path.join(os.path.join(ROOT_DIR, "klines_results_test"))
+    result_dir = os.path.join(os.path.join(ROOT_DIR, "klines_results"))
     os.makedirs(result_dir, exist_ok=True)
 
     same_file_name = os.path.join(result_dir, "same_file.log")
@@ -170,6 +172,17 @@ if __name__ == "__main__":
         same_file.close()
     else:
         same_files = []
+
+    # 已经处理的文件也 append 到这里
+    for ex in EXCHANGE_LIST:
+        if not os.path.exists(os.path.join(result_dir, ex)):
+            continue
+        for err_type in ["timeout_all", "timeout_new", "timeout_old", "err_size", "err_id", "err_value"]:
+            if os.path.exists(os.path.join(result_dir, ex, err_type)):
+                file_list = os.listdir(os.path.join(result_dir, ex, err_type))
+                same_files.extend([f[0:f.index('.log')] for f in file_list])
+
+    print(len(same_files))
 
     # 一个进程专门记录已经处理过的完全一样的 合约 周期
     m = multiprocessing.Manager()
