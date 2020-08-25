@@ -6,10 +6,12 @@
 """
 import multiprocessing
 import os
+from datetime import datetime
 
 import numpy as np
 import pandas
 import requests
+from tqsdk.utils import _generate_uuid
 
 EXCHANGE_LIST = ["SHFE", "CFFEX", "INE", "DCE", "CZCE", "KQ", "SSWE"]
 
@@ -24,14 +26,25 @@ def get_df_diff(df_old, df_new, cols):
     for col in cols:
         arr_old = df_old[col].values
         arr_new = df_new[col].values
+        df_new[col].dtypes == "float64"
         np.logical_and(arr_diff, np.equal(arr_old, arr_new), arr_diff)
     if not np.all(arr_diff):
         np.logical_not(arr_diff, arr_diff)
         df_diff_old = df_old.loc[arr_diff]
         df_diff_new = df_new.loc[arr_diff]
         if not df_diff_old.empty:
-            return f"{df_diff_old.to_string(index=False)}\n\n{df_diff_new.to_string(index=False)}"
+            return f"{df_tostring(df_diff_old)}\n\n{df_tostring(df_diff_new)}"
     return None
+
+
+def df_tostring(df, show_all=True):
+    if df.shape[0] == 0:
+        return "Empty"
+    show_all = True if df.shape[0] < 20 or show_all else False
+    if show_all:
+        return df.to_string(index=False)
+    else:
+        return df[:5].to_string(index=False) + "\n......\n" + df[-5:].to_string(index=False)
 
 
 def diff_two_csv(file_old, file_new, cols):
@@ -44,39 +57,57 @@ def diff_two_csv(file_old, file_new, cols):
     """
     df_old = pandas.read_csv(file_old)
     df_new = pandas.read_csv(file_new)
-    if df_old.shape[0] == 0 or df_new.shape[0] == 0:
-        return {
-            "type": "timeout",
+    result = None
+    if df_old.shape[0] == 0 and df_new.shape[0] == 0:
+        result = {
+            "type": "timeout_all",
             "error": f"df_old: {repr(df_old.shape)}\ndf_new: {repr(df_new.shape)}"
+        }
+    elif df_old.shape[0] == 0 or df_new.shape[0] == 0:
+        result = {
+            "type": "timeout_" + ("old" if df_old.shape[0] == 0 else "new"),
+            "error": f"df_old: {repr(df_old.shape)}\ndf_new: {repr(df_new.shape)}"\
+                     f"\n{'*' * 50}\n{df_tostring(df_old, show_all=False)}\n{'*' * 50}\n{df_tostring(df_new, show_all=False)}"
         }
     elif df_old.shape != df_new.shape:
-        return {
+        result = {
             "type": "err_size",
-            "error": f"df_old: {repr(df_old.shape)}\ndf_new: {repr(df_new.shape)}"
+            "error": f"df_old: {repr(df_old.shape)}\ndf_new: {repr(df_new.shape)}"\
+                     f"\n{'*' * 50}\n{df_tostring(df_old, show_all=False)}\n{'*' * 50}\n{df_tostring(df_new, show_all=False)}"
         }
     elif df_old.iloc[0]["id"] != df_new.iloc[0]["id"] or df_old.iloc[-1]["id"] != df_new.iloc[-1]["id"]:
-        return {
+        result = {
             "type": "err_id",
-            "error": f"df_old: {df_old.iloc[0]['id']} ~ {df_old.iloc[-1]['id']}\ndf_new: {df_new.iloc[0]['id']} ~ {df_new.iloc[-1]['id']}"
+            "error": f"df_old: {df_old.iloc[0]['id']} ~ {df_old.iloc[-1]['id']}\ndf_new: {df_new.iloc[0]['id']} ~ {df_new.iloc[-1]['id']}" \
+                     f"\n{'*' * 50}\n{df_tostring(df_old, show_all=False)}\n{'*' * 50}\n{df_tostring(df_new, show_all=False)}"
         }
+    if result:
+        return result
     r = get_df_diff(df_old, df_new, cols)
     if r:
         return {
             "type": "err_value",
             "error": r
         }
-    return None
+    # None
 
 
-def diff_symbol(dir):
+def diff_symbol(dir, symbol, same_files, writing_same_queue):
     diff_result = {}
     for dur in [0, 1, 5, 15, 30, 60, 60 * 5, 60 * 15, 60 * 30, 60 * 60, 60 * 60 * 2, 60 * 60 * 4, 60 * 60 * 24,
                 60 * 60 * 24 * 7]:
         file_name_old = os.path.join(dir, f"{'ticks' if dur == 0 else 'klines_' + str(dur)}_old.csv")
         file_name_new = os.path.join(dir, f"{'ticks' if dur == 0 else 'klines_' + str(dur)}_new.csv")
-        res = diff_two_csv(file_name_old, file_name_new, TICKS_COLS if dur == 0 else KLINES_COLS)
-        if res:
-            diff_result[dur] = res
+        if f"{symbol}-{dur}" in same_files:
+            continue
+        if os.path.exists(file_name_old) and os.path.exists(file_name_new):
+            res = diff_two_csv(file_name_old, file_name_new, TICKS_COLS if dur == 0 else KLINES_COLS)
+            if res:
+                diff_result[dur] = res
+            else:
+                writing_same_queue.put(f"{symbol}-{dur}")
+        else:
+            print(f"no file {file_name_old} or {file_name_new}")
     return diff_result
 
 
@@ -87,36 +118,63 @@ def record_diff(result_dir, symbol, result):
         file.close()
 
 
-def diff_symbols(dir, result_dir, symbols):
+def diff_symbols(dir, result_dir, symbols, same_files, writing_same_queue):
     for s in symbols:
-        diff_result = diff_symbol(os.path.join(dir, s))
+        diff_result = diff_symbol(os.path.join(dir, s), s, same_files, writing_same_queue)
         record_diff(result_dir, s, diff_result)
 
 
 def process_input(args):
-    ex, symbols = args
-    dir = "/Volumes/share/mayanqiong/klines_expired/"
-    result_dir = f"/Volumes/share/mayanqiong/klines_diff_results/{ex}"
-    os.makedirs(result_dir, exist_ok=True)
-    os.makedirs(os.path.join(result_dir, "timeout"), exist_ok=True)
+    ex, symbols, same_files, writing_same_queue = args
+    dir = "S:/mayanqiong/klines_expired/"
+    result_dir = f"S:/mayanqiong/klines_results/{ex}"
+    os.makedirs(os.path.join(result_dir, "timeout_all"), exist_ok=True)
+    os.makedirs(os.path.join(result_dir, "timeout_new"), exist_ok=True)
+    os.makedirs(os.path.join(result_dir, "timeout_old"), exist_ok=True)
     os.makedirs(os.path.join(result_dir, "err_size"), exist_ok=True)
     os.makedirs(os.path.join(result_dir, "err_id"), exist_ok=True)
     os.makedirs(os.path.join(result_dir, "err_value"), exist_ok=True)
-    diff_symbols(dir, result_dir, symbols)
+    diff_symbols(dir, result_dir, symbols, same_files, writing_same_queue)
+
+
+def writing_proc(writing_queue, file_name):
+    file_handle = open(file_name, mode="a")
+    while True:
+        s = writing_queue.get()
+        if s == 0:
+            file_handle.close()
+            break
+        file_handle.write(s + '\n')
 
 
 if __name__ == "__main__":
-    rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/latest.json", timeout=30)
+    print(datetime.now())
+    rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/2020-08-21.json", timeout=30)
     symbols_group = {ex: [k for k, v in rsp.json().items() if v["exchange_id"] == ex and v["class"] != "FUTURE_COMBINE"] for ex in EXCHANGE_LIST}
+
+    # 已经完全相等的文件
+    dir = "S:/mayanqiong/klines_expired/"
+    same_file = open(os.path.join(dir, "same_file.log"), mode="r")
+    same_files = same_file.readlines()
+    same_file.close()
+
+    # 一个进程专门记录已经处理过的完全一样的 合约 周期
+    m = multiprocessing.Manager()
+    writing_same_queue = m.Queue()
+    same_file_proc = multiprocessing.Process(writing_proc, args=(writing_same_queue, os.path.join(dir, "same_file.log")))
+    same_file_proc.start()
 
     # 将 symbol 分组，group_size 个一组
     group_size = 50
     inputs = []
     for ex, symbols in symbols_group.items():
-        inputs.extend([(ex, symbols[i: i+group_size]) for i in range(0, len(symbols), group_size)])
+        inputs.extend([(ex, symbols[i: i+group_size], same_files, writing_same_queue) for i in range(0, len(symbols), group_size)])
 
     # 分好组的参数
-    pool = multiprocessing.Pool(processes=32)
+    pool = multiprocessing.Pool(processes=30)
     pool_outputs = pool.map(process_input, inputs)
     pool.close()
     pool.join()
+
+    same_file_proc.join()
+    print(datetime.now())
