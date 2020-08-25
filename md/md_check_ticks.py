@@ -52,6 +52,14 @@ def df_tostring(df, show_all=True):
         return df[:5].to_string(index=False) + "\n........\n" + df[-5:].to_string(index=False)
 
 
+def handle_err_id(df_old, df_new):
+    """
+    处理 df_old 将 datetime 为 .9995ddddd 的行，比较数值，一样的数值，删去 下一行
+    此时 df_old 减小到 n 行，与 df_new 最后 n 行比较，矩阵是否相同
+    """
+    pass
+
+
 def diff_two_csv(file_old, file_new, cols):
     """
     三种不同类型的错误
@@ -88,11 +96,19 @@ def diff_two_csv(file_old, file_new, cols):
                      f"\n{'*' * 50}\n{df_tostring(df_old, show_all=False)}\n{'*' * 50}\n{df_tostring(df_new, show_all=False)}"
         }
     elif df_old.iloc[0]["id"] != df_new.iloc[0]["id"] or df_old.iloc[-1]["id"] != df_new.iloc[-1]["id"]:
-        result = {
-            "type": "err_id",
-            "error": f"df_old: {df_old.iloc[0]['id']} ~ {df_old.iloc[-1]['id']}\ndf_new: {df_new.iloc[0]['id']} ~ {df_new.iloc[-1]['id']}" \
-                     f"\n{'*' * 50}\n{df_tostring(df_old, show_all=False)}\n{'*' * 50}\n{df_tostring(df_new, show_all=False)}"
-        }
+        if df_old.iloc[-1]["id"] > df_new.iloc[-1]["id"]:
+
+            result = {
+                "type": "err_id_old_greater",
+                "error": f"df_old: {df_old.iloc[0]['id']} ~ {df_old.iloc[-1]['id']}\ndf_new: {df_new.iloc[0]['id']} ~ {df_new.iloc[-1]['id']}" \
+                         f"\n{'*' * 50}\n{df_tostring(df_old, show_all=False)}\n{'*' * 50}\n{df_tostring(df_new, show_all=False)}"
+            }
+        else:
+            result = {
+                "type": "err_id_new_greater",
+                "error": f"df_old: {df_old.iloc[0]['id']} ~ {df_old.iloc[-1]['id']}\ndf_new: {df_new.iloc[0]['id']} ~ {df_new.iloc[-1]['id']}" \
+                         f"\n{'*' * 50}\n{df_tostring(df_old, show_all=False)}\n{'*' * 50}\n{df_tostring(df_new, show_all=False)}"
+            }
     if result:
         return result
     r = get_df_diff(df_old, df_new, cols)
@@ -125,10 +141,11 @@ def diff_symbol(dir, symbol, same_files, writing_same_queue):
 
 def record_diff(result_dir, symbol, result):
     for dur in result:
-        os.makedirs(os.path.join(result_dir, ex, result[dur]['type']), exist_ok=True)
-        file = open(os.path.join(result_dir, f"{result[dur]['type']}/{symbol}-{dur}.log"), mode="w")
-        file.write(result[dur]["error"])
-        file.close()
+        if result[dur]['type'] == "err_value":
+            os.makedirs(os.path.join(result_dir, result[dur]['type']), exist_ok=True)
+            file = open(os.path.join(result_dir, f"{result[dur]['type']}/{symbol}-{dur}.log"), mode="w")
+            file.write(result[dur]["error"])
+            file.close()
 
 
 def diff_symbols(dir, result_dir, symbols, same_files, writing_same_queue):
