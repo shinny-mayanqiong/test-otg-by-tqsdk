@@ -21,12 +21,16 @@ TICKS_COLS = ["last_price", "highest", "lowest", "bid_price1", "bid_volume1", "a
          "amount", "open_interest"]
 
 
+ROOT_DIR = "/Volumes/share/mayanqiong/"
+
+
 def get_df_diff(df_old, df_new, cols):
     arr_diff = np.array([True for _ in range(df_old.shape[0])])
     for col in cols:
         arr_old = df_old[col].values
         arr_new = df_new[col].values
-        df_new[col].dtypes == "float64"
+        if arr_new.dtype == "float64":
+            np.round(arr_new, 3, arr_new)
         np.logical_and(arr_diff, np.equal(arr_old, arr_new), arr_diff)
     if not np.all(arr_diff):
         np.logical_not(arr_diff, arr_diff)
@@ -89,7 +93,7 @@ def diff_two_csv(file_old, file_new, cols):
             "type": "err_value",
             "error": r
         }
-    # None
+    return None
 
 
 def diff_symbol(dir, symbol, same_files, writing_same_queue):
@@ -125,16 +129,15 @@ def diff_symbols(dir, result_dir, symbols, same_files, writing_same_queue):
 
 
 def process_input(args):
-    ex, symbols, same_files, writing_same_queue = args
-    dir = "S:/mayanqiong/klines_expired/"
-    result_dir = f"S:/mayanqiong/klines_results/{ex}"
-    os.makedirs(os.path.join(result_dir, "timeout_all"), exist_ok=True)
-    os.makedirs(os.path.join(result_dir, "timeout_new"), exist_ok=True)
-    os.makedirs(os.path.join(result_dir, "timeout_old"), exist_ok=True)
-    os.makedirs(os.path.join(result_dir, "err_size"), exist_ok=True)
-    os.makedirs(os.path.join(result_dir, "err_id"), exist_ok=True)
-    os.makedirs(os.path.join(result_dir, "err_value"), exist_ok=True)
-    diff_symbols(dir, result_dir, symbols, same_files, writing_same_queue)
+    ex, symbols, result_dir, same_files, writing_same_queue = args
+    dir = os.path.join(ROOT_DIR, "klines_expired")
+    os.makedirs(os.path.join(result_dir, ex, "timeout_all"), exist_ok=True)
+    os.makedirs(os.path.join(result_dir, ex, "timeout_new"), exist_ok=True)
+    os.makedirs(os.path.join(result_dir, ex, "timeout_old"), exist_ok=True)
+    os.makedirs(os.path.join(result_dir, ex, "err_size"), exist_ok=True)
+    os.makedirs(os.path.join(result_dir, ex, "err_id"), exist_ok=True)
+    os.makedirs(os.path.join(result_dir, ex, "err_value"), exist_ok=True)
+    diff_symbols(dir, os.path.join(result_dir, ex), symbols, same_files, writing_same_queue)
 
 
 def writing_proc(writing_queue, file_name):
@@ -150,25 +153,35 @@ def writing_proc(writing_queue, file_name):
 if __name__ == "__main__":
     print(datetime.now())
     rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/2020-08-21.json", timeout=30)
-    symbols_group = {ex: [k for k, v in rsp.json().items() if v["exchange_id"] == ex and v["class"] != "FUTURE_COMBINE"] for ex in EXCHANGE_LIST}
+    all_symbols = rsp.json()
+    symbols_group = {ex: [k for k, v in all_symbols.items() if v["exchange_id"] == ex and v["class"] != "FUTURE_COMBINE"] for ex in EXCHANGE_LIST}
+
+    # symbols_group = {"SHFE": ["SHFE.au2012", "SHFE.au1612"], "CFFEX": ["CFFEX.IC1606"]}
 
     # 已经完全相等的文件
-    dir = "S:/mayanqiong/klines_expired/"
-    same_file = open(os.path.join(dir, "same_file.log"), mode="r")
-    same_files = same_file.readlines()
-    same_file.close()
+    data_dir = os.path.join(ROOT_DIR, "klines_expired")
+    result_dir = os.path.join(os.path.join(ROOT_DIR, "klines_results_test"))
+    os.makedirs(result_dir, exist_ok=True)
+
+    same_file_name = os.path.join(result_dir, "same_file.log")
+    if os.path.exists(same_file_name):
+        same_file = open(os.path.join(result_dir, "same_file.log"), mode="r")
+        same_files = [s.strip() for s in same_file.readlines()]
+        same_file.close()
+    else:
+        same_files = []
 
     # 一个进程专门记录已经处理过的完全一样的 合约 周期
     m = multiprocessing.Manager()
     writing_same_queue = m.Queue()
-    same_file_proc = multiprocessing.Process(writing_proc, args=(writing_same_queue, os.path.join(dir, "same_file.log")))
+    same_file_proc = multiprocessing.Process(target=writing_proc, args=(writing_same_queue, same_file_name))
     same_file_proc.start()
 
     # 将 symbol 分组，group_size 个一组
     group_size = 50
     inputs = []
     for ex, symbols in symbols_group.items():
-        inputs.extend([(ex, symbols[i: i+group_size], same_files, writing_same_queue) for i in range(0, len(symbols), group_size)])
+        inputs.extend([(ex, symbols[i: i+group_size], result_dir, same_files, writing_same_queue) for i in range(0, len(symbols), group_size)])
 
     # 分好组的参数
     pool = multiprocessing.Pool(processes=30)
@@ -176,5 +189,6 @@ if __name__ == "__main__":
     pool.close()
     pool.join()
 
+    writing_same_queue.put(0)
     same_file_proc.join()
     print(datetime.now())
