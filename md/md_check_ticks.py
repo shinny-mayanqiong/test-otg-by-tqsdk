@@ -52,15 +52,38 @@ def df_tostring(df, show_all=True):
         return df[:5].to_string(index=False) + "\n........\n" + df[-5:].to_string(index=False)
 
 
-def handle_err_id(df_old, df_new):
+def handle_err_id(df_old, df_new, cols):
     """
+    只有 ticks 会有这个问题
     处理 df_old 将 datetime 为 .9995ddddd 的行，比较数值，一样的数值，删去 下一行
     此时 df_old 减小到 n 行，与 df_new 最后 n 行比较，矩阵是否相同
     """
-    pass
+    df_old["datetime"] = pandas.to_datetime(df_old["datetime_nano"], unit="ns")
+    df_new["datetime"] = pandas.to_datetime(df_new["datetime_nano"], unit="ns")
+    d = df_old["datetime"].dt.microsecond >= 999500
+    df_999 = df_old.iloc[d.values]
+    if df_999.shape[0] > 1:
+        one_line = df_999.iloc[0]
+        i = 1
+        del_lines = []
+        while i < df_999.shape[0]:
+            second_line = df_999.iloc[i]
+            if not one_line.loc[cols].equals(second_line.loc[cols]):
+                one_line = df_999.iloc[i]
+            else:
+                del_lines.append(second_line)
+            i = i+1
+        for d in del_lines:
+            df_old.drop(index=d.name, inplace=True)
+    df_new.drop(index=[i for i in range(len(del_lines))], inplace=True)
+    r = get_df_diff(df_old, df_new, cols)
+    if r:
+        return f"删除 old 中 999500 之后重复的行情后，数据依然有差：\ndf_old: {df_old.iloc[0]['id']} ~ {df_old.iloc[-1]['id']}\ndf_new: {df_new.iloc[0]['id']} ~ {df_new.iloc[-1]['id']}" \
+           f"\n{'*' * 50}\n{df_tostring(df_old, show_all=False)}\n{'*' * 50}\n{df_tostring(df_new, show_all=False)}"
+    return None
 
 
-def diff_two_csv(file_old, file_new, cols):
+def diff_two_csv(file_old, file_new, cols, symbol, dur):
     """
     三种不同类型的错误
     timeout 有合约下载超时
@@ -97,12 +120,19 @@ def diff_two_csv(file_old, file_new, cols):
         }
     elif df_old.iloc[0]["id"] != df_new.iloc[0]["id"] or df_old.iloc[-1]["id"] != df_new.iloc[-1]["id"]:
         if df_old.iloc[-1]["id"] > df_new.iloc[-1]["id"]:
-
-            result = {
-                "type": "err_id_old_greater",
-                "error": f"df_old: {df_old.iloc[0]['id']} ~ {df_old.iloc[-1]['id']}\ndf_new: {df_new.iloc[0]['id']} ~ {df_new.iloc[-1]['id']}" \
-                         f"\n{'*' * 50}\n{df_tostring(df_old, show_all=False)}\n{'*' * 50}\n{df_tostring(df_new, show_all=False)}"
-            }
+            if dur == 0:
+                err = handle_err_id(df_old, df_new, cols)
+                if err:
+                    result = {
+                        "type": "err_id_old_greater",
+                        "error": err
+                    }
+            else:
+                result = {
+                    "type": "err_id_old_greater",
+                    "error": f"df_old: {df_old.iloc[0]['id']} ~ {df_old.iloc[-1]['id']}\ndf_new: {df_new.iloc[0]['id']} ~ {df_new.iloc[-1]['id']}" \
+                             f"\n{'*' * 50}\n{df_tostring(df_old, show_all=False)}\n{'*' * 50}\n{df_tostring(df_new, show_all=False)}"
+                }
         else:
             result = {
                 "type": "err_id_new_greater",
@@ -129,7 +159,7 @@ def diff_symbol(dir, symbol, same_files, writing_same_queue):
         if f"{symbol}-{dur}" in same_files:
             continue
         if os.path.exists(file_name_old) and os.path.exists(file_name_new):
-            res = diff_two_csv(file_name_old, file_name_new, TICKS_COLS if dur == 0 else KLINES_COLS)
+            res = diff_two_csv(file_name_old, file_name_new, TICKS_COLS if dur == 0 else KLINES_COLS, symbol, dur)
             if res:
                 diff_result[dur] = res
             else:
@@ -172,14 +202,14 @@ def writing_proc(writing_queue, file_name):
 
 if __name__ == "__main__":
     print(datetime.now())
-    rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/2020-08-21.json", timeout=30)
-    all_symbols = rsp.json()
-    symbols_group = {ex: [k for k, v in all_symbols.items() if v["exchange_id"] == ex and v["class"] != "FUTURE_COMBINE"] for ex in EXCHANGE_LIST}
+    # rsp = requests.get(url="https://openmd.shinnytech.com/t/md/symbols/2020-08-21.json", timeout=30)
+    # all_symbols = rsp.json()
+    # symbols_group = {ex: [k for k, v in all_symbols.items() if v["exchange_id"] == ex and v["class"] != "FUTURE_COMBINE"] for ex in EXCHANGE_LIST}
 
-    # symbols_group = {"SHFE": ["SHFE.au2012", "SHFE.au1612"], "CFFEX": ["CFFEX.IC1606"]}
+    symbols_group = {"CFFEX": ["CFFEX.TF2009"]}
 
     # 已经完全相等的文件
-    result_dir = os.path.join(os.path.join(ROOT_DIR, "klines_results"))
+    result_dir = os.path.join(os.path.join(ROOT_DIR, "klines_results_test"))
     os.makedirs(result_dir, exist_ok=True)
 
     same_file_name = os.path.join(result_dir, "same_file.log")
@@ -194,7 +224,7 @@ if __name__ == "__main__":
     for ex in EXCHANGE_LIST:
         if not os.path.exists(os.path.join(result_dir, ex)):
             continue
-        for err_type in ["timeout_all", "timeout_new", "timeout_old", "err_size", "err_id", "err_value"]:
+        for err_type in os.listdir(os.path.join(result_dir, ex)):
             if os.path.exists(os.path.join(result_dir, ex, err_type)):
                 file_list = os.listdir(os.path.join(result_dir, ex, err_type))
                 same_files.extend([f[0:f.index('.log')] for f in file_list])
@@ -213,11 +243,13 @@ if __name__ == "__main__":
     for ex, symbols in symbols_group.items():
         inputs.extend([(ex, symbols[i: i+group_size], result_dir, same_files, writing_same_queue) for i in range(0, len(symbols), group_size)])
 
+
+    process_input(inputs[0])
     # 分好组的参数
-    pool = multiprocessing.Pool(processes=30)
-    pool_outputs = pool.map(process_input, inputs)
-    pool.close()
-    pool.join()
+    # pool = multiprocessing.Pool(processes=1)
+    # pool_outputs = pool.map(process_input, inputs)
+    # pool.close()
+    # pool.join()
 
     writing_same_queue.put(0)
     same_file_proc.join()
