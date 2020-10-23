@@ -5,7 +5,7 @@ __author__ = 'yanqiong'
 import unittest
 from datetime import datetime
 
-from tqsdk import TqApi, TqBacktest, BacktestFinished
+from tqsdk import TqApi, TqBacktest, BacktestFinished, TqAccount
 from tqsdk.tools import DataDownloader
 
 
@@ -102,4 +102,12 @@ class TestLmtIdx(unittest.TestCase):
         api = TqApi(_stock=False, auth="myanq@qq.com,MaYanQiong")
         self.assertEqual(api._md_url, "wss://u.shinnytech.com/t/md/front/mobile")
         download(api)
+        api.close()
+
+    # -----------------------------------------------
+    # 实盘账户登录
+    # -----------------------------------------------
+    def test_api_vipuser_account(self):
+        api = TqApi(account=TqAccount("simnow", "103988", "MaYanQiong"), auth="myanq@qq.com,MaYanQiong")
+        self.assertEqual(api._md_url, "wss://api.shinnytech.com/t/nfmd/front/mobile")
         api.close()
